@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 // GET: Get current user's family info (same as before)
 export async function GET(req: NextRequest) {
@@ -184,7 +185,7 @@ export async function POST(req: NextRequest) {
     console.error('[FAMILY_POST]', error)
     
     // Handle specific constraint errors
-    if (error.code === 'P2002') {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return NextResponse.json(
         { success: false, error: 'A family with this configuration already exists' },
         { status: 400 }

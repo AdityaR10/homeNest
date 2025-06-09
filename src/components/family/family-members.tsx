@@ -8,14 +8,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 interface FamilyMember {
   id: string
-  userId: string
-  role: 'OWNER' | 'MEMBER'
-  user: {
-    firstName: string | null
-    lastName: string | null
-    imageUrl: string | null
-  }
-  joinedAt: Date
+  name: string
+  email: string
+  role: string
+  isOwner: boolean
+  clerkId: string
 }
 
 interface FamilyMembersProps {
@@ -63,23 +60,18 @@ export function FamilyMembers({ members, isOwner }: FamilyMembersProps) {
         >
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={member.user.imageUrl || undefined} />
               <AvatarFallback>
-                {member.user.firstName?.[0]}
-                {member.user.lastName?.[0]}
+                {member.name.split(' ').map(n => n[0]).join('')}
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-medium">
-                {member.user.firstName} {member.user.lastName}
-              </p>
+              <p className="font-medium">{member.name}</p>
               <p className="text-sm text-muted-foreground">
-                {member.role === 'OWNER' ? 'Owner' : 'Member'} • Joined{' '}
-                {new Date(member.joinedAt).toLocaleDateString()}
+                {member.role} • {member.email}
               </p>
             </div>
           </div>
-          {isOwner && member.role !== 'OWNER' && (
+          {isOwner && !member.isOwner && (
             <Button
               variant="destructive"
               size="sm"

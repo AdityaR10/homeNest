@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { UserRole } from '@prisma/client'
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId
+            clerkId: userId
           }
         }
       }
@@ -53,18 +54,30 @@ export async function POST(req: NextRequest) {
       return new NextResponse('Family has reached maximum member limit', { status: 400 })
     }
 
-    // Create join request
-    const joinRequest = await db.familyJoinRequest.create({
+    // Get the user
+    const user = await db.user.findUnique({
+      where: { clerkId: userId }
+    })
+
+    if (!user) {
+      return new NextResponse('User not found', { status: 404 })
+    }
+
+    // Add user to family
+    await db.user.update({
+      where: { clerkId: userId },
       data: {
         familyId: family.id,
-        userId,
-        status: 'PENDING'
+        role: UserRole.PARENT // Default role for new members
       }
     })
 
     return NextResponse.json({
-      message: 'Join request submitted successfully',
-      requestId: joinRequest.id
+      message: 'Successfully joined family',
+      family: {
+        id: family.id,
+        name: family.name
+      }
     })
   } catch (error) {
     console.error('[FAMILY_JOIN_POST]', error)
@@ -84,7 +97,7 @@ export async function GET(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId,
+            clerkId:userId,
             role: 'OWNER'
           }
         }
@@ -137,7 +150,7 @@ export async function PUT(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId,
+            clerkId:userId,
             role: 'OWNER'
           }
         }

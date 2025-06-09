@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Shield, User } from 'lucide-react'
+import { Loader2, Shield, User, UserPlus, Users } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import {
   Select,
   SelectContent,
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { AddFamilyMember } from '@/components/family/add-family-member'
 
 interface FamilyMember {
   id: string
@@ -28,6 +30,7 @@ interface Family {
 }
 
 export default function RolesPage() {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
   const [family, setFamily] = useState<Family | null>(null)
@@ -100,28 +103,80 @@ export default function RolesPage() {
   if (!family) {
     return (
       <div className="container max-w-2xl mx-auto px-4 py-16">
-        <Card>
-          <CardHeader>
-            <CardTitle>No Family Found</CardTitle>
-            <CardDescription>
-              You are not currently part of any family.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-2">Family Management</h1>
+          <p className="text-muted-foreground">
+            You're not part of a family yet. Create a new family or join an existing one.
+          </p>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Create a New Family
+              </CardTitle>
+              <CardDescription>
+                Start a new family and invite others to join
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                onClick={() => router.push('/onboarding/family/create')}
+              >
+                Create Family
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Join Existing Family
+              </CardTitle>
+              <CardDescription>
+                Join a family using an invite code
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                onClick={() => router.push('/onboarding/family/join')}
+              >
+                Join Family
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="container max-w-4xl mx-auto px-4 py-16">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Family Roles</h1>
+          <p className="text-muted-foreground">
+            Manage roles and permissions for family members
+          </p>
+        </div>
+        {isOwner && (
+          <AddFamilyMember familyId={family.id} />
+        )}
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
-            Family Roles
+            Family Members
           </CardTitle>
           <CardDescription>
-            Manage roles and permissions for family members
+            View and manage your family members' roles
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -36,14 +36,7 @@ const features = [
     icon: Users,
     href: '/dashboard/activities',
     color: 'text-blue-500',
-  },
-  {
-    title: 'Tasks',
-    description: 'Manage family chores and task assignments',
-    icon: CheckSquare,
-    href: '/dashboard/tasks',
-    color: 'text-purple-500',
-  },
+  }, 
   {
     title: 'Roles Panel',
     description: 'View and switch to other interfaces (Cook, Driver, Admin)',

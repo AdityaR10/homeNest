@@ -10,7 +10,6 @@ export async function updateProfile(data: {
   firstName: string
   lastName: string
   role: 'PARENT' | 'COOK' | 'DRIVER' | 'CHILD'
-  phone?: string
 }) {
   try {
     const { userId } = await auth()
@@ -27,16 +26,17 @@ export async function updateProfile(data: {
       throw new Error('Email not found')
     }
 
+    // Update our database
     const user = await db.user.upsert({
       where: { clerkId: userId },
       update: {
         firstName: data.firstName,
         lastName: data.lastName,
-        role: data.role, // This will now work with enum
+        role: data.role,
       },
       create: {
         clerkId: userId,
-        email: email, // Use actual email from Clerk
+        email: email,
         firstName: data.firstName,
         lastName: data.lastName,
         role: data.role,
@@ -47,6 +47,9 @@ export async function updateProfile(data: {
     return { success: true, user }
   } catch (error) {
     console.error('Failed to update profile:', error)
+    if (error instanceof Error) {
+      return { success: false, error: error.message }
+    }
     return { success: false, error: 'Failed to update profile' }
   }
 }

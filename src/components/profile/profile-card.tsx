@@ -1,14 +1,42 @@
 'use client'
 
-import { useUser } from '@clerk/nextjs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useEffect, useState } from 'react'
+
+interface User {
+  id: string
+  firstName: string | null
+  lastName: string | null
+  email: string
+  role: 'PARENT' | 'COOK' | 'DRIVER' | 'CHILD'
+  createdAt: string
+}
 
 export function ProfileCard() {
-  const { user, isLoaded } = useUser()
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  if (!isLoaded) {
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const response = await fetch('/api/user')
+        const data = await response.json()
+        if (data.success) {
+          setUser(data.user)
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchUser()
+  }, [])
+
+  if (isLoading) {
     return (
       <Card>
         <CardHeader>
@@ -37,16 +65,17 @@ export function ProfileCard() {
       <CardContent className="space-y-6">
         <div className="flex items-center space-x-4">
           <Avatar className="h-20 w-20">
-            <AvatarImage src={user.imageUrl} alt={user.fullName || ''} />
             <AvatarFallback>
               {user.firstName?.charAt(0)}
               {user.lastName?.charAt(0)}
             </AvatarFallback>
           </Avatar>
           <div>
-            <h3 className="text-lg font-semibold">{user.fullName}</h3>
+            <h3 className="text-lg font-semibold">
+              {user.firstName} {user.lastName}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              {user.primaryEmailAddress?.emailAddress}
+              {user.email}
             </p>
           </div>
         </div>
@@ -54,13 +83,7 @@ export function ProfileCard() {
           <div>
             <p className="text-sm font-medium">Member since</p>
             <p className="text-sm text-muted-foreground">
-              {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm font-medium">Last sign in</p>
-            <p className="text-sm text-muted-foreground">
-              {user.lastSignInAt ? new Date(user.lastSignInAt).toLocaleDateString() : 'N/A'}
+              {new Date(user.createdAt).toLocaleDateString()}
             </p>
           </div>
         </div>

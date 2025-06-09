@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { nanoid } from 'nanoid'
+import { UserRole } from '@prisma/client'
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
@@ -15,8 +16,8 @@ export async function POST(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId,
-            role: 'OWNER'
+            clerkId: userId,
+        
           }
         }
       }
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
@@ -64,8 +65,8 @@ export async function PUT(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId,
-            role: 'OWNER'
+            clerkId: userId,
+            role: UserRole.ADMIN
           }
         }
       }
@@ -103,7 +104,7 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
@@ -113,8 +114,8 @@ export async function DELETE(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId,
-            role: 'OWNER'
+            clerkId: userId,
+            role: UserRole.ADMIN
           }
         }
       }

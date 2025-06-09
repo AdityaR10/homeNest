@@ -22,11 +22,16 @@ const geistMono = Geist_Mono({
 
 import { MobileLayout } from '@/components/layout/mobile-layout'
  
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#000000',
+  colorScheme: 'light',
+}
 
 export const metadata: Metadata = {
   title: 'HomeNest - Smart Family Organizer',
-  description: 'Manage your family household efficiently with AI-powered meal planning',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
+  description: 'Manage your family household efficiently with AI-powered meal planning'
 }
 export default function RootLayout({
   children,
