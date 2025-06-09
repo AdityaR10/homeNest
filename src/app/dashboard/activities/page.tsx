@@ -2,47 +2,31 @@
 
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { toast } from 'sonner'
+import { usePermissions } from '@/hooks/usePermissions'
 import { BackButton } from '@/components/ui/back-button'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
-import { toast } from 'sonner'
-import { 
-  Calendar, 
-  MapPin, 
-  Plus, 
-  Trash2, 
-  Edit2,
-  CheckCircle2,
-  Clock
-} from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-// app/dashboard/activities/page.tsx - Update the interface
+import { Calendar, Clock, MapPin, Plus, Edit2, Trash2, CheckCircle2 } from 'lucide-react'
+
 interface Activity {
   id: string
   title: string
-  description: string
-  date: string          // Single date field instead of startDate/endDate
-  location: string
-  status: string        // Simple string instead of enum
+  description?: string
+  date: string
+  location?: string
+  status: string
   createdBy: {
     firstName: string
     lastName: string
   }
 }
 
-
 export default function ActivitiesPage() {
+  const { permissions, isLoading: isLoadingPermissions } = usePermissions()
+  
   // State management
   const [activities, setActivities] = useState<Activity[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -61,8 +45,10 @@ export default function ActivitiesPage() {
 
   // Load activities on mount
   useEffect(() => {
-    loadActivities()
-  }, [])
+    if (!isLoadingPermissions) {
+      loadActivities()
+    }
+  }, [isLoadingPermissions])
 
   const loadActivities = async () => {
     setIsLoading(true)
@@ -84,6 +70,15 @@ export default function ActivitiesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!permissions.canCreateActivities && !editingActivity) {
+      toast.error('You do not have permission to create activities')
+      return
+    }
+    if (!permissions.canEditActivities && editingActivity) {
+      toast.error('You do not have permission to edit activities')
+      return
+    }
+
     setIsSaving(true)
 
     try {
@@ -123,6 +118,11 @@ export default function ActivitiesPage() {
   }
 
   const handleDelete = async (id: string) => {
+    if (!permissions.canDeleteActivities) {
+      toast.error('You do not have permission to delete activities')
+      return
+    }
+
     if (!window.confirm('Are you sure you want to delete this activity?')) return
 
     try {
@@ -144,6 +144,11 @@ export default function ActivitiesPage() {
   }
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
+    if (!permissions.canEditActivities) {
+      toast.error('You do not have permission to edit activities')
+      return
+    }
+
     try {
       const response = await fetch(`/api/activities/${id}`, {
         method: 'PUT',
@@ -167,6 +172,10 @@ export default function ActivitiesPage() {
   }
 
   const openEditDialog = (activity: Activity) => {
+    if (!permissions.canEditActivities) {
+      toast.error('You do not have permission to edit activities')
+      return
+    }
     setEditingActivity(activity)
     setFormData({
       title: activity.title,
@@ -179,6 +188,10 @@ export default function ActivitiesPage() {
   }
 
   const openAddDialog = () => {
+    if (!permissions.canCreateActivities) {
+      toast.error('You do not have permission to create activities')
+      return
+    }
     setEditingActivity(null)
     setFormData({
       title: '',
@@ -188,6 +201,25 @@ export default function ActivitiesPage() {
       location: ''
     })
     setShowDialog(true)
+  }
+
+  if (isLoadingPermissions) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
+  }
+
+  if (!permissions.canViewActivities) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
+          <p className="text-muted-foreground">You don't have permission to view activities.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -204,10 +236,12 @@ export default function ActivitiesPage() {
           </div>
         </div>
 
-        <Button onClick={openAddDialog}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Activity
-        </Button>
+        {permissions.canCreateActivities && (
+          <Button onClick={openAddDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Activity
+          </Button>
+        )}
       </div>
 
       {/* Activities List */}
@@ -268,29 +302,35 @@ export default function ActivitiesPage() {
                   </div>
                   
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleStatusToggle(activity.id, activity.status)}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                    </Button>
+                    {permissions.canEditActivities && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleStatusToggle(activity.id, activity.status)}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                    )}
                     
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditDialog(activity)}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
+                    {permissions.canEditActivities && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDialog(activity)}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                    )}
                     
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(activity.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {permissions.canDeleteActivities && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(activity.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -300,91 +340,87 @@ export default function ActivitiesPage() {
       </Card>
 
       {/* Add/Edit Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingActivity ? 'Edit Activity' : 'Add Activity'}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Enter activity title"
-                required
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Enter activity description"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="date">Date</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  required
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="time">Time</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-            
-            <div>
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                placeholder="Enter activity location"
-              />
-            </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowDialog(false)}
-              >
-                Cancel
-              </Button>
-              
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? (
-                  <Spinner className="mr-2 h-4 w-4" />
-                ) : (
-                  <Plus className="mr-2 h-4 w-4" />
-                )}
-                {editingActivity ? 'Update' : 'Create'} Activity
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {showDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>{editingActivity ? 'Edit Activity' : 'Add Activity'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Title</label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    className="w-full mt-1 p-2 border rounded-md"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium">Description</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full mt-1 p-2 border rounded-md"
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Date</label>
+                    <input
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                      className="w-full mt-1 p-2 border rounded-md"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium">Time</label>
+                    <input
+                      type="time"
+                      value={formData.time}
+                      onChange={(e) => setFormData(prev => ({ ...prev, time: e.target.value }))}
+                      className="w-full mt-1 p-2 border rounded-md"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium">Location</label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                    className="w-full mt-1 p-2 border rounded-md"
+                  />
+                </div>
+                
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowDialog(false)}
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? 'Saving...' : editingActivity ? 'Update' : 'Create'}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 } 

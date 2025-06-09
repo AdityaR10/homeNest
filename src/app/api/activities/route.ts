@@ -11,8 +11,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Use the simple Activity model
+    // Get user with family
+    const user = await getUserWithFamily(userId)
+    if (!user?.family) {
+      return NextResponse.json({ success: false, error: 'User not part of a family' }, { status: 404 })
+    }
+
+    // Get activities for the family
     const activities = await db.activity.findMany({
+      where: {
+        familyId: user.family.id
+      },
       orderBy: { date: 'asc' },
       include: {
         createdBy: {
@@ -35,6 +44,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get user with family
+    const user = await getUserWithFamily(userId)
+    if (!user?.family) {
+      return NextResponse.json({ success: false, error: 'User not part of a family' }, { status: 404 })
+    }
+
     const body = await request.json()
     const { title, description, date, location } = body
 
@@ -49,6 +64,7 @@ export async function POST(request: NextRequest) {
         date: new Date(date),
         location: location || '',
         status: 'pending',
+        familyId: user.family.id,
         createdByClerkId: userId
       },
       include: {
@@ -72,11 +88,29 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get user with family
+    const user = await getUserWithFamily(userId)
+    if (!user?.family) {
+      return NextResponse.json({ success: false, error: 'User not part of a family' }, { status: 404 })
+    }
+
     const body = await request.json()
     const { id, title, description, date, location, status } = body
 
     if (!id || !title || !date) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Verify the activity belongs to the user's family
+    const existingActivity = await db.activity.findFirst({
+      where: {
+        id,
+        familyId: user.family.id
+      }
+    })
+
+    if (!existingActivity) {
+      return NextResponse.json({ success: false, error: 'Activity not found' }, { status: 404 })
     }
 
     const activity = await db.activity.update({
@@ -109,11 +143,29 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get user with family
+    const user = await getUserWithFamily(userId)
+    if (!user?.family) {
+      return NextResponse.json({ success: false, error: 'User not part of a family' }, { status: 404 })
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Activity ID required' }, { status: 400 })
+    }
+
+    // Verify the activity belongs to the user's family
+    const existingActivity = await db.activity.findFirst({
+      where: {
+        id,
+        familyId: user.family.id
+      }
+    })
+
+    if (!existingActivity) {
+      return NextResponse.json({ success: false, error: 'Activity not found' }, { status: 404 })
     }
 
     await db.activity.delete({ where: { id } })

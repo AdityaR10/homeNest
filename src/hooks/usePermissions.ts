@@ -22,24 +22,32 @@ interface UserPermissions {
   canGenerateAIMealPlans: boolean
 }
 
-// Simplified permissions - for now, all authenticated users have full permissions
-// You can enhance this later with role-based permissions
+// All family members have full access to view and edit resources
 const getDefaultPermissions = (): UserPermissions => ({
+  // Meal Plans
   canCreateMealPlans: true,
   canEditMealPlans: true,
   canDeleteMealPlans: true,
   canViewMealPlans: true,
+  
+  // Activities
   canCreateActivities: true,
   canEditActivities: true,
   canDeleteActivities: true,
   canViewActivities: true,
+  
+  // Shopping Lists
   canCreateShoppingLists: true,
   canEditShoppingLists: true,
   canDeleteShoppingLists: true,
   canViewShoppingLists: true,
-  canManageFamily: true,
-  canInviteMembers: true,
-  canChangeUserRoles: false, // Keep this false for safety
+  
+  // Family Management (restricted to ADMIN role)
+  canManageFamily: false,
+  canInviteMembers: false,
+  canChangeUserRoles: false,
+  
+  // AI Features
   canGenerateAIMealPlans: true,
 })
 
@@ -47,17 +55,36 @@ export const usePermissions = () => {
   const { user, isLoaded } = useUser()
   const [userRole, setUserRole] = useState<string>('PARENT')
   const [isLoading, setIsLoading] = useState(true)
+  const [permissions, setPermissions] = useState<UserPermissions>(getDefaultPermissions())
 
   useEffect(() => {
-    if (isLoaded) {
-      // For now, set everyone as PARENT role
-      // You can fetch actual role from your database later
-      setUserRole('PARENT')
-      setIsLoading(false)
+    const fetchUserRole = async () => {
+      if (isLoaded && user) {
+        try {
+          const response = await fetch('/api/user')
+          const data = await response.json()
+          if (data.success && data.user) {
+            setUserRole(data.user.role)
+            
+            // Update permissions based on role
+            const newPermissions = getDefaultPermissions()
+            if (data.user.role === 'ADMIN') {
+              newPermissions.canManageFamily = true
+              newPermissions.canInviteMembers = true
+              newPermissions.canChangeUserRoles = true
+            }
+            setPermissions(newPermissions)
+          }
+        } catch (error) {
+          console.error('Error fetching user role:', error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
     }
-  }, [isLoaded])
 
-  const permissions = getDefaultPermissions()
+    fetchUserRole()
+  }, [isLoaded, user])
 
   return {
     permissions,
