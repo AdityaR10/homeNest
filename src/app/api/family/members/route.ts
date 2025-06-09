@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 
 // GET: Get family members
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 // DELETE: Remove family member
 export async function DELETE(request: NextRequest) {
   try {
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
