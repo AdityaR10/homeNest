@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User not part of a family' }, { status: 400 })
     }
 
-    const familyId = user.family.id // Store familyId in a variable to avoid null checks
+    const familyId = user.family.id
 
     const body = await req.json()
     const { 
@@ -47,12 +47,12 @@ export async function POST(req: NextRequest) {
 
     // Generate meals using Gemini
     const meals = await generateMealPlan({
-      cuisine,
-      dietaryRestrictions,
+      cuisine: cuisine,
+      dietaryRestrictions: dietaryRestrictions || [],
       numberOfPeople,
       numberOfDays,
-      availableIngredients,
-      excludeIngredients
+      availableIngredients: availableIngredients || [],
+      excludeIngredients: excludeIngredients || []
     }) as GeneratedMeal[]
 
     if (!meals || meals.length === 0) {
@@ -82,14 +82,17 @@ export async function POST(req: NextRequest) {
       })
     )
 
-      return NextResponse.json({
-        success: true,
+    return NextResponse.json({
+      success: true,
       meals: savedMeals
     })
   } catch (error) {
-    console.error('Error generating meal plan:', error)
+    console.error('[GENERATE_MEAL_PLAN] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to generate meal plan' },
+      { 
+        error: 'Failed to generate meal plan',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }

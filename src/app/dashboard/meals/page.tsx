@@ -3,13 +3,12 @@
 import { useState, useEffect } from 'react'
 import { startOfWeek, endOfWeek, subDays, addDays, format } from 'date-fns'
 import { toast } from 'sonner'
-import { useUser } from '@clerk/nextjs'
 import { usePermissions } from '@/hooks/usePermissions'
 import { MealCard } from '@/components/meals/meal-card'
 import { MealPlanHeader } from '@/components/meals/meal-plan-header'
 import { GenerateMealPlanDialog } from '@/components/meals/generate-meal-plan-dialog'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
-import { Trash2 } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 const MEALS = ['BREAKFAST', 'LUNCH', 'DINNER']
@@ -32,14 +31,13 @@ interface MealDetails {
 }
 
 interface MealPlan {
-  [key: string]: {
-    [key: string]: MealDetails | string
+  [day: string]: {
+    [mealType: string]: MealDetails | string | null
   }
 }
 
 export default function MealPlannerPage() {
-  const { user } = useUser()
-  const { permissions } = usePermissions()
+  const { permissions, isLoading: isLoadingPermissions } = usePermissions()
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [mealPlan, setMealPlan] = useState<MealPlan>({})
   const [isLoading, setIsLoading] = useState(true)
@@ -68,7 +66,8 @@ export default function MealPlannerPage() {
   }
 
   // Helper function to get meal title for display
-  const getMealTitle = (meal: MealDetails | string): string => {
+  const getMealTitle = (meal: MealDetails | string | null): string => {
+    if (meal === null) return ''
     if (typeof meal === 'string') return meal
     return meal?.title || ''
   }
@@ -83,20 +82,20 @@ export default function MealPlannerPage() {
 
   // Load meal plan
   useEffect(() => {
-    loadMealPlan()
-  }, [weekStart])
+    if (!isLoadingPermissions) {
+      loadMealPlan()
+    }
+  }, [weekStart, isLoadingPermissions])
 
   const loadMealPlan = async () => {
     setIsLoading(true)
     try {
       const response = await fetch(`/api/mealPlan?weekStart=${weekStart.toISOString()}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success && data.mealPlan) {
-          setMealPlan(data.mealPlan)
-        } else {
-          setMealPlan(initializeEmptyMealPlan())
-        }
+      if (!response.ok) throw new Error('Failed to load meal plan')
+      
+      const data = await response.json()
+      if (data.success) {
+        setMealPlan(data.mealPlan || initializeEmptyMealPlan())
       } else {
         setMealPlan(initializeEmptyMealPlan())
       }
@@ -110,39 +109,53 @@ export default function MealPlannerPage() {
   }
 
   const savePlan = async () => {
+    if (!permissions.canEditMealPlans) {
+      toast.error('You do not have permission to edit meal plans')
+      return
+    }
+
     setIsSaving(true)
     try {
-      // Prepare the meal plan data with complete meal objects
-      const mealPlanToSave = Object.keys(mealPlan).reduce((acc, day) => {
-        acc[day] = Object.keys(mealPlan[day]).reduce((dayAcc, mealType) => {
-          const meal = mealPlan[day][mealType]
-          const mealObject = getMealObject(meal)
-          dayAcc[mealType] = mealObject || ''
+      // Format the meal plan data for the API
+      const formattedMealPlan = Object.entries(mealPlan).reduce((acc, [day, dayMeals]) => {
+        acc[day] = Object.entries(dayMeals).reduce((dayAcc, [mealType, meal]) => {
+          if (meal) {
+            const mealDate = new Date(weekStart)
+            mealDate.setDate(weekStart.getDate() + DAYS.indexOf(day))
+            
+            dayAcc[mealType] = {
+              title: typeof meal === 'string' ? meal : meal.title,
+              mealType,
+              date: mealDate.toISOString(),
+              description: typeof meal === 'string' ? '' : (meal.description || ''),
+              ingredients: typeof meal === 'string' ? [] : (meal.ingredients || []),
+              instructions: typeof meal === 'string' ? '' : (meal.instructions || ''),
+              calories: typeof meal === 'string' ? null : (meal.calories || null),
+              cuisine: typeof meal === 'string' ? '' : (meal.cuisine || ''),
+              isAiGenerated: false
+            }
+          }
           return dayAcc
-        }, {} as any)
+        }, {} as Record<string, any>)
         return acc
-      }, {} as any)
+      }, {} as Record<string, Record<string, any>>)
 
       const response = await fetch('/api/mealPlan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           weekStart: weekStart.toISOString(),
-          mealPlan: mealPlanToSave
+          mealPlan: formattedMealPlan
         })
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setHasUnsavedChanges(false)
-          toast.success('Meal plan saved successfully!')
-        } else {
-          toast.error(data.error || 'Failed to save meal plan')
-        }
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.error || 'Failed to save meal plan')
+      if (!response.ok) throw new Error('Failed to save meal plan')
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Meal plan saved successfully')
+        setHasUnsavedChanges(false)
+        loadMealPlan() // Reload to get the saved data
       }
     } catch (error) {
       console.error('Error saving meal plan:', error)
@@ -153,25 +166,24 @@ export default function MealPlannerPage() {
   }
 
   const clearWeekMealPlan = async () => {
+    if (!permissions.canDeleteMealPlans) {
+      toast.error('You do not have permission to delete meal plans')
+      return
+    }
+
     setIsClearing(true)
     try {
-      const response = await fetch(`/api/mealPlan/clear?weekStartDate=${weekStart.toISOString()}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
+      const response = await fetch(`/api/mealPlan?weekStart=${weekStart.toISOString()}`, {
+        method: 'DELETE'
       })
-  
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setMealPlan(initializeEmptyMealPlan())
-          setHasUnsavedChanges(false)
-          toast.success(data.message || 'Meal plan cleared successfully!')
-        } else {
-          toast.error(data.error || 'Failed to clear meal plan')
-        }
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.error || 'Failed to clear meal plan')
+
+      if (!response.ok) throw new Error('Failed to clear meal plan')
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Meal plan cleared successfully')
+        setMealPlan(initializeEmptyMealPlan())
+        setHasUnsavedChanges(false)
       }
     } catch (error) {
       console.error('Error clearing meal plan:', error)
@@ -183,78 +195,70 @@ export default function MealPlannerPage() {
   }
 
   const handleGeneratePlan = async () => {
-    // Check if there are existing meals (non-empty values)
-    const hasExistingMeals = Object.values(mealPlan).some(dayMeals => 
-      Object.values(dayMeals).some(meal => {
-        const title = getMealTitle(meal)
-        return title && title.trim() !== ''
-      })
-    )
-    
-    if (hasExistingMeals) {
-      setIsReplaceDialogOpen(true)
+    if (!permissions.canGenerateAIMealPlans) {
+      toast.error('You do not have permission to generate meal plans')
       return
     }
 
-    await generateNewPlan()
-  }
-
-  const generateNewPlan = async () => {
     setIsLoading(true)
     try {
       const response = await fetch('/api/generateMealPlan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cuisine: [cuisine],
-          dietaryRestrictions,
+          cuisine,
           numberOfPeople,
-          numberOfDays: 7,
+          dietaryRestrictions,
           availableIngredients: availableIngredients.split(',').map(i => i.trim()).filter(Boolean),
-          excludeIngredients: []
+          numberOfDays: 7
         })
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to generate meal plan')
-      }
+      if (!response.ok) throw new Error('Failed to generate meal plan')
 
       const data = await response.json()
       if (data.success && data.meals) {
-        // Initialize new meal plan structure
-        const newPlan = initializeEmptyMealPlan()
-        
+        // Format the generated meals into the meal plan structure
+        const newMealPlan = initializeEmptyMealPlan()
+        const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+        const mealTypes = ['BREAKFAST', 'LUNCH', 'DINNER']
+
         // Group meals by meal type
         const mealsByType = {
-          BREAKFAST: data.meals.filter((meal: MealDetails) => meal.mealType === 'BREAKFAST'),
-          LUNCH: data.meals.filter((meal: MealDetails) => meal.mealType === 'LUNCH'),
-          DINNER: data.meals.filter((meal: MealDetails) => meal.mealType === 'DINNER')
+          BREAKFAST: data.meals.filter((meal: any) => meal.mealType === 'BREAKFAST'),
+          LUNCH: data.meals.filter((meal: any) => meal.mealType === 'LUNCH'),
+          DINNER: data.meals.filter((meal: any) => meal.mealType === 'DINNER')
         }
 
-        // Distribute meals across the week (7 days)
-        DAYS.forEach((day, dayIndex) => {
-          MEALS.forEach(mealType => {
+        // Distribute meals across the week
+        days.forEach((day, dayIndex) => {
+          mealTypes.forEach(mealType => {
             const mealsOfType = mealsByType[mealType as keyof typeof mealsByType]
             if (mealsOfType && mealsOfType[dayIndex]) {
-              // Store the complete meal object
-              newPlan[day][mealType] = {
-                ...mealsOfType[dayIndex],
-                // Update the date to match the actual day of the week
-                date: addDays(weekStart, dayIndex).toISOString()
-              }
+              newMealPlan[day][mealType] = mealsOfType[dayIndex]
             }
           })
         })
 
-        setMealPlan(newPlan)
-        setHasUnsavedChanges(true)
-        setIsDialogOpen(false)
-        toast.success('Meal plan generated successfully!')
-        
-        // Log for debugging
-        console.log('Generated meal plan:', newPlan)
-        
+        // Save the generated meal plan
+        const saveResponse = await fetch('/api/mealPlan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            weekStart: weekStart.toISOString(),
+            mealPlan: newMealPlan
+          })
+        })
+
+        if (!saveResponse.ok) throw new Error('Failed to save generated meal plan')
+
+        const saveData = await saveResponse.json()
+        if (saveData.success) {
+          toast.success('Meal plan generated and saved successfully')
+          setMealPlan(newMealPlan)
+          setHasUnsavedChanges(false)
+          setIsDialogOpen(false)
+        }
       } else {
         throw new Error('Invalid response format from meal generation API')
       }
@@ -263,11 +267,15 @@ export default function MealPlannerPage() {
       toast.error(error instanceof Error ? error.message : 'Failed to generate meal plan')
     } finally {
       setIsLoading(false)
-      setIsReplaceDialogOpen(false)
     }
   }
 
   const handleMealChange = (day: string, mealType: string, value: string) => {
+    if (!permissions.canEditMealPlans) {
+      toast.error('You do not have permission to edit meal plans')
+      return
+    }
+
     setMealPlan(prev => ({
       ...prev,
       [day]: {
@@ -287,6 +295,14 @@ export default function MealPlannerPage() {
     const newWeekStart = direction === 'prev' ? subDays(weekStart, 7) : addDays(weekStart, 7)
     setWeekStart(newWeekStart)
     setHasUnsavedChanges(false)
+  }
+
+  if (isLoadingPermissions) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
   }
 
   if (!permissions.canViewMealPlans) {
@@ -323,14 +339,30 @@ export default function MealPlannerPage() {
         canEdit={permissions.canEditMealPlans}
         onWeekChange={handleWeekChange}
         onEditToggle={() => {
+          if (!permissions.canEditMealPlans) {
+            toast.error('You do not have permission to edit meal plans')
+            return
+          }
           setIsEditMode(!isEditMode)
           if (isEditMode) {
             setHasUnsavedChanges(false)
           }
         }}
-        onGeneratePlan={() => setIsDialogOpen(true)}
+        onGeneratePlan={() => {
+          if (!permissions.canGenerateAIMealPlans) {
+            toast.error('You do not have permission to generate meal plans')
+            return
+          }
+          setIsDialogOpen(true)
+        }}
         onSave={savePlan}
-        onClearWeek={() => setIsClearDialogOpen(true)}
+        onClearWeek={() => {
+          if (!permissions.canDeleteMealPlans) {
+            toast.error('You do not have permission to delete meal plans')
+            return
+          }
+          setIsClearDialogOpen(true)
+        }}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
@@ -369,16 +401,6 @@ export default function MealPlannerPage() {
         variant="destructive"
         isLoading={isClearing}
         onConfirm={clearWeekMealPlan}
-      />
-
-      <ConfirmationDialog
-        open={isReplaceDialogOpen}
-        onOpenChange={setIsReplaceDialogOpen}
-        title="Replace Meal Plan"
-        description={`You already have meals planned for this week. Generating a new plan will replace all existing meals for the week of ${weekRange}. Do you want to continue?`}
-        confirmText="Replace Plan"
-        isLoading={isLoading}
-        onConfirm={generateNewPlan}
       />
     </div>
   )

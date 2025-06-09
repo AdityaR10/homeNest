@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     // Get user with family
     const user = await getUserWithFamily(userId)
     if (!user?.family) {
-      return NextResponse.json({ error: 'User or family not found' }, { status: 404 })
+      return NextResponse.json({ error: 'User not part of a family' }, { status: 404 })
     }
 
     let whereClause: any = {
@@ -74,49 +74,44 @@ export async function GET(request: NextRequest) {
 
     // Convert to the expected format for the frontend
     const weekStartDate = weekStart ? new Date(weekStart) : null
-    if (weekStartDate && mealPlans.length > 0) {
-      const formattedMealPlan: any = {}
-      const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
-      
-      // Initialize empty structure
-      days.forEach(day => {
-        formattedMealPlan[day] = {
-          BREAKFAST: '',
-          LUNCH: '',
-          DINNER: ''
-        }
-      })
-
-      // Fill with actual meal data
-      mealPlans.forEach(meal => {
-        const mealDate = new Date(meal.date)
-        const dayDiff = Math.floor((mealDate.getTime() - weekStartDate.getTime()) / (1000 * 60 * 60 * 24))
-        
-        if (dayDiff >= 0 && dayDiff < 7) {
-          const dayName = days[dayDiff]
-          const mealType = meal.mealType.toUpperCase()
-          
-          if (formattedMealPlan[dayName] && ['BREAKFAST', 'LUNCH', 'DINNER'].includes(mealType)) {
-            formattedMealPlan[dayName][mealType] = meal
-          }
-        }
-      })
-
-      return NextResponse.json({
-        success: true,
-        mealPlan: formattedMealPlan
-      })
+    const weekEndDate = weekStartDate ? new Date(weekStartDate) : null
+    if (weekEndDate && weekStartDate) {
+      weekEndDate.setDate(weekStartDate.getDate() + 7)
     }
+
+    const structuredMealPlan: Record<string, Record<string, any>> = {}
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+    const meals = ['BREAKFAST', 'LUNCH', 'DINNER']
+
+    // Initialize the structure
+    days.forEach(day => {
+      structuredMealPlan[day] = {}
+      meals.forEach(meal => {
+        structuredMealPlan[day][meal] = null
+      })
+    })
+
+    // Fill in the meals
+    mealPlans.forEach(meal => {
+      const mealDate = new Date(meal.date)
+      const dayIndex = mealDate.getDay()
+      const day = days[dayIndex === 0 ? 6 : dayIndex - 1] // Convert Sunday (0) to last day
+      const mealType = meal.mealType
+
+      if (structuredMealPlan[day] && structuredMealPlan[day][mealType] === null) {
+        structuredMealPlan[day][mealType] = meal
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      mealPlans
+      mealPlan: structuredMealPlan
     })
 
   } catch (error) {
     console.error('[GET_MEAL_PLAN] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch meal plans' },
+      { error: 'Failed to fetch meal plan' },
       { status: 500 }
     )
   }
@@ -148,7 +143,7 @@ export async function POST(request: NextRequest) {
     // Get user with family
     const user = await getUserWithFamily(userId)
     if (!user?.family) {
-      return NextResponse.json({ error: 'User or family not found' }, { status: 404 })
+      return NextResponse.json({ error: 'User not part of a family' }, { status: 404 })
     }
 
     // Handle bulk meal plan creation (from weekly planner)
@@ -181,51 +176,16 @@ export async function POST(request: NextRequest) {
         console.error('[CREATE_MEAL_PLAN] Error clearing existing meals:', clearError)
       }
       
-      // Process each day and meal
+      // Process each day and meal type
       for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
         const day = days[dayIndex]
-        const dayMeals = weeklyMealsData[day]
+        const mealDate = new Date(startDate)
+        mealDate.setDate(startDate.getDate() + dayIndex)
         
-        if (dayMeals) {
-          for (const mealType of mealTypes) {
-            const meal = dayMeals[mealType]
-            
-            // Skip empty meals
-            if (!meal) continue
-            
-            // Handle both string titles and full meal objects
-            let mealData
-            if (typeof meal === 'string') {
-              if (!meal.trim()) continue
-              mealData = {
-                title: meal.trim(),
-                description: `${mealType} for ${day}`,
-                mealType: mealType as 'BREAKFAST' | 'LUNCH' | 'DINNER',
-                ingredients: [],
-                instructions: '',
-                calories: null,
-                cuisine: '',
-                isAiGenerated: false
-              }
-            } else {
-              // It's a full meal object
-              if (!meal.title || !meal.title.trim()) continue
-              mealData = {
-                title: meal.title.trim(),
-                description: meal.description || `${mealType} for ${day}`,
-                mealType: (meal.mealType || mealType).toUpperCase() as 'BREAKFAST' | 'LUNCH' | 'DINNER',
-                ingredients: Array.isArray(meal.ingredients) ? meal.ingredients : [],
-                instructions: meal.instructions || '',
-                calories: meal.calories ? parseInt(meal.calories.toString()) : null,
-                cuisine: meal.cuisine || '',
-                isAiGenerated: meal.isAiGenerated || false
-              }
-            }
-            
-            // Calculate the date for this day
-            const mealDate = new Date(startDate)
-            mealDate.setDate(startDate.getDate() + dayIndex)
-            
+        for (const mealType of mealTypes) {
+          const mealData = weeklyMealsData[day]?.[mealType]
+          
+          if (mealData) {
             try {
               const savedMeal = await db.mealPlan.create({
                 data: {
@@ -347,6 +307,58 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Failed to create meal plan',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get user with family
+    const user = await getUserWithFamily(userId)
+    if (!user?.family) {
+      return NextResponse.json({ error: 'User not part of a family' }, { status: 404 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const weekStart = searchParams.get('weekStart')
+
+    if (!weekStart) {
+      return NextResponse.json({ error: 'Week start date is required' }, { status: 400 })
+    }
+
+    const startDate = new Date(weekStart)
+    const endDate = new Date(startDate)
+    endDate.setDate(startDate.getDate() + 7)
+
+    // Delete all meals for the specified week
+    await db.mealPlan.deleteMany({
+      where: {
+        familyId: user.family.id,
+        date: {
+          gte: startDate,
+          lt: endDate
+        }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Meal plan cleared successfully'
+    })
+
+  } catch (error) {
+    console.error('[DELETE_MEAL_PLAN] Error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Failed to delete meal plan',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

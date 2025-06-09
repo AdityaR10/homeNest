@@ -73,7 +73,7 @@ export async function generateMealPlan(request: MealPlanRequest): Promise<Genera
     Generate a ${request.numberOfDays}-day meal plan for ${request.numberOfPeople} people.
     
     Requirements:
-    - Cuisines: ${request.cuisine.join(', ')}
+    - Cuisines: ${request.cuisine}
     - Dietary restrictions: ${request.dietaryRestrictions.join(', ') || 'None'}
     - Available ingredients: ${request.availableIngredients?.join(', ') || 'None specified'}
     - Exclude ingredients: ${request.excludeIngredients?.join(', ') || 'None'}
