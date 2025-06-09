@@ -29,6 +29,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { usePermissions } from '@/hooks/usePermissions'
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 
 interface ShoppingItem {
   id?: string
@@ -48,6 +50,7 @@ interface MealPlan {
 }
 
 export default function ShoppingListPage() {
+  const { permissions, isLoading: isLoadingPermissions } = usePermissions()
   const [currentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }))
   
   // State management
@@ -56,9 +59,11 @@ export default function ShoppingListPage() {
   const [isLoadingMeals, setIsLoadingMeals] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
-  const [hasSavedList, setHasSavedList] = useState(false) // Track if list exists
+  const [hasSavedList, setHasSavedList] = useState(false)
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   
   // Add item dialog state
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -68,9 +73,11 @@ export default function ShoppingListPage() {
 
   // Load current week's meal plan on mount
   useEffect(() => {
-    loadCurrentWeekMealPlan()
-    loadSavedShoppingList()
-  }, [])
+    if (!isLoadingPermissions) {
+      loadCurrentWeekMealPlan()
+      loadSavedShoppingList()
+    }
+  }, [isLoadingPermissions])
 
   const loadCurrentWeekMealPlan = async () => {
     setIsLoadingMeals(true)
@@ -131,6 +138,11 @@ export default function ShoppingListPage() {
   }
 
   const generateShoppingList = () => {
+    if (!permissions.canCreateShoppingLists) {
+      toast.error('You do not have permission to create shopping lists')
+      return
+    }
+
     if (mealPlans.length === 0) {
       toast.error('No meal plan available for this week')
       return
@@ -190,6 +202,11 @@ export default function ShoppingListPage() {
   }
 
   const saveShoppingList = async () => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     setIsSaving(true)
     try {
       const response = await fetch('/api/shopping', {
@@ -201,19 +218,14 @@ export default function ShoppingListPage() {
         })
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setHasUnsavedChanges(false)
-          setIsEditMode(false) // Exit edit mode after successful save
-          setHasSavedList(true) // Mark as saved
-          toast.success('Shopping list saved successfully!')
-        } else {
-          toast.error(data.error || 'Failed to save shopping list')
-        }
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.error || 'Failed to save shopping list')
+      if (!response.ok) throw new Error('Failed to save shopping list')
+
+      const data = await response.json()
+      if (data.success) {
+        setHasUnsavedChanges(false)
+        setIsEditMode(false)
+        setHasSavedList(true)
+        toast.success('Shopping list saved successfully')
       }
     } catch (error) {
       console.error('Error saving shopping list:', error)
@@ -223,7 +235,43 @@ export default function ShoppingListPage() {
     }
   }
 
+  const clearShoppingList = async () => {
+    if (!permissions.canDeleteShoppingLists) {
+      toast.error('You do not have permission to delete shopping lists')
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/shopping?weekStart=${currentWeekStart.toISOString()}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) throw new Error('Failed to clear shopping list')
+
+      const data = await response.json()
+      if (data.success) {
+        setShoppingItems([])
+        setHasSavedList(false)
+        setHasUnsavedChanges(false)
+        setIsEditMode(false)
+        toast.success('Shopping list cleared successfully')
+      }
+    } catch (error) {
+      console.error('Error clearing shopping list:', error)
+      toast.error('Failed to clear shopping list')
+    } finally {
+      setIsDeleting(false)
+      setIsClearDialogOpen(false)
+    }
+  }
+
   const resetShoppingList = () => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     if (hasUnsavedChanges) {
       const confirm = window.confirm('You have unsaved changes. Are you sure you want to reset?')
       if (!confirm) return
@@ -237,11 +285,15 @@ export default function ShoppingListPage() {
   }
 
   const toggleItemPurchased = async (index: number) => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     const updatedItems = [...shoppingItems]
     updatedItems[index].isPurchased = !updatedItems[index].isPurchased
     setShoppingItems(updatedItems)
     
-    // If we have a saved list, automatically save the purchase status change
     if (hasSavedList && !isEditMode) {
       try {
         await fetch('/api/shopping', {
@@ -256,12 +308,16 @@ export default function ShoppingListPage() {
         console.error('Error updating purchase status:', error)
       }
     } else {
-      // Only mark as unsaved if in edit mode
       setHasUnsavedChanges(true)
     }
   }
 
   const updateItemQuantity = (index: number, quantity: string) => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     const updatedItems = [...shoppingItems]
     updatedItems[index].quantity = quantity
     setShoppingItems(updatedItems)
@@ -269,6 +325,11 @@ export default function ShoppingListPage() {
   }
 
   const updateItemCategory = (index: number, category: string) => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     const updatedItems = [...shoppingItems]
     updatedItems[index].category = category
     setShoppingItems(updatedItems)
@@ -276,12 +337,22 @@ export default function ShoppingListPage() {
   }
 
   const removeItem = (index: number) => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     const updatedItems = shoppingItems.filter((_, i) => i !== index)
     setShoppingItems(updatedItems)
     setHasUnsavedChanges(true)
   }
 
   const addManualItem = () => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     if (!newItemName.trim()) return
 
     const newItem: ShoppingItem = {
@@ -302,11 +373,21 @@ export default function ShoppingListPage() {
   }
 
   const handleEditMode = () => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     setIsEditMode(true)
-    setHasUnsavedChanges(false) // Reset unsaved changes when entering edit mode
+    setHasUnsavedChanges(false)
   }
 
   const handleCancelEdit = () => {
+    if (!permissions.canEditShoppingLists) {
+      toast.error('You do not have permission to edit shopping lists')
+      return
+    }
+
     if (hasUnsavedChanges) {
       const confirm = window.confirm('You have unsaved changes. Are you sure you want to cancel?')
       if (!confirm) return
@@ -314,8 +395,26 @@ export default function ShoppingListPage() {
     
     setIsEditMode(false)
     setHasUnsavedChanges(false)
-    // Reload the saved list to revert changes
     loadSavedShoppingList()
+  }
+
+  if (isLoadingPermissions) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
+  }
+
+  if (!permissions.canViewShoppingLists) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
+          <p className="text-muted-foreground">You don't have permission to view shopping lists.</p>
+        </div>
+      </div>
+    )
   }
 
   // No meal plan state
@@ -358,45 +457,45 @@ export default function ShoppingListPage() {
         </div>
 
         <div className="flex gap-2">
-          <Button 
-            onClick={generateShoppingList} 
-            disabled={isGenerating || mealPlans.length === 0}
-            variant="default"
-          >
-            {isGenerating ? <Spinner className="mr-2 h-4 w-4" /> : <Wand2 className="mr-2 h-4 w-4" />}
-            Generate from Meals
-          </Button>
+          {permissions.canCreateShoppingLists && (
+            <Button 
+              onClick={generateShoppingList} 
+              disabled={isGenerating || mealPlans.length === 0}
+              variant="default"
+            >
+              {isGenerating ? <Spinner className="mr-2 h-4 w-4" /> : <Wand2 className="mr-2 h-4 w-4" />}
+              Generate from Meals
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Meal Plan Summary */}
-      {mealPlans.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              This Week's Meals ({mealPlans.length} meals)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {mealPlans.slice(0, 6).map((meal, index) => (
-                <div key={meal.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
-                  <Badge variant="outline" className="text-xs">
-                    {meal.mealType}
-                  </Badge>
-                  <span className="text-sm truncate flex-1">{meal.title}</span>
-                </div>
-              ))}
-              {mealPlans.length > 6 && (
-                <div className="text-sm text-muted-foreground p-2">
-                  +{mealPlans.length - 6} more meals
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            This Week's Meals ({mealPlans.length} meals)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {mealPlans.slice(0, 6).map((meal) => (
+              <div key={meal.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+                <Badge variant="outline" className="text-xs">
+                  {meal.mealType}
+                </Badge>
+                <span className="text-sm truncate flex-1">{meal.title}</span>
+              </div>
+            ))}
+            {mealPlans.length > 6 && (
+              <div className="text-sm text-muted-foreground p-2">
+                +{mealPlans.length - 6} more meals
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Shopping List */}
       <Card>
@@ -413,7 +512,7 @@ export default function ShoppingListPage() {
             </CardTitle>
             
             <div className="flex gap-2">
-              {isEditMode && (
+              {isEditMode && permissions.canEditShoppingLists && (
                 <>
                   <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                     <DialogTrigger asChild>
@@ -459,7 +558,7 @@ export default function ShoppingListPage() {
                             <option value="Other">Other</option>
                           </select>
                         </div>
-                        <Button onClick={addManualItem} className="w-full">
+                        <Button onClick={addManualItem}>
                           Add Item
                         </Button>
                       </div>
@@ -503,6 +602,7 @@ export default function ShoppingListPage() {
                         <Checkbox
                           checked={item.isPurchased}
                           onCheckedChange={() => toggleItemPurchased(item.index)}
+                          disabled={!permissions.canEditShoppingLists}
                         />
                         <div className="flex-1">
                           <span className={`${item.isPurchased ? 'line-through text-muted-foreground' : ''}`}>
@@ -512,18 +612,18 @@ export default function ShoppingListPage() {
                             <Badge variant="outline" className="ml-2 text-xs">Manual</Badge>
                           )}
                         </div>
-                        {isEditMode && (
-                          <>
+                        {isEditMode && permissions.canEditShoppingLists && (
+                          <div className="flex items-center gap-2">
                             <Input
                               value={item.quantity}
                               onChange={(e) => updateItemQuantity(item.index, e.target.value)}
-                              className="w-20 h-8"
+                              className="w-20"
                               placeholder="Qty"
                             />
                             <select
                               value={item.category}
                               onChange={(e) => updateItemCategory(item.index, e.target.value)}
-                              className="h-8 px-2 border rounded text-sm"
+                              className="w-32 p-1 border rounded"
                             >
                               <option value="Vegetables">Vegetables</option>
                               <option value="Fruits">Fruits</option>
@@ -541,12 +641,7 @@ export default function ShoppingListPage() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
-                          </>
-                        )}
-                        {!isEditMode && (
-                          <span className="text-sm text-muted-foreground">
-                            {item.quantity}
-                          </span>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -563,30 +658,48 @@ export default function ShoppingListPage() {
         <div className="flex gap-4">
           {isEditMode ? (
             <>
-              <Button 
-                onClick={saveShoppingList} 
-                disabled={isSaving || !hasUnsavedChanges}
-                className="flex-1"
-              >
-                {isSaving ? <Spinner className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Shopping List
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={handleCancelEdit}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
+              {permissions.canEditShoppingLists && (
+                <Button 
+                  onClick={saveShoppingList} 
+                  disabled={isSaving || !hasUnsavedChanges}
+                  className="flex-1"
+                >
+                  {isSaving ? <Spinner className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Shopping List
+                </Button>
+              )}
+              {permissions.canEditShoppingLists && (
+                <Button 
+                  variant="outline" 
+                  onClick={handleCancelEdit}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              )}
             </>
           ) : (
-            <Button 
-              onClick={handleEditMode}
-              className="flex-1"
-            >
-              <Edit className="mr-2 h-4 w-4" />
-              Edit Shopping List
-            </Button>
+            <>
+              {permissions.canEditShoppingLists && (
+                <Button 
+                  onClick={handleEditMode}
+                  className="flex-1"
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Shopping List
+                </Button>
+              )}
+              {permissions.canDeleteShoppingLists && (
+                <Button 
+                  variant="destructive" 
+                  onClick={() => setIsClearDialogOpen(true)}
+                  className="flex-1"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Clear List
+                </Button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -597,6 +710,17 @@ export default function ShoppingListPage() {
           <span className="text-sm text-yellow-600">You have unsaved changes</span>
         </div>
       )}
+
+      <ConfirmationDialog
+        open={isClearDialogOpen}
+        onOpenChange={setIsClearDialogOpen}
+        title="Clear Shopping List"
+        description={`This will permanently delete the shopping list for the week of ${format(currentWeekStart, 'MMM d')}. This action cannot be undone.`}
+        confirmText="Clear List"
+        variant="destructive"
+        isLoading={isDeleting}
+        onConfirm={clearShoppingList}
+      />
     </div>
   )
 }

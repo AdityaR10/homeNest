@@ -11,19 +11,19 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const week = searchParams.get('week')
+    const weekStart = searchParams.get('weekStart')
 
     const user = await getUserWithFamily(userId)
     if (!user?.family) {
-      return NextResponse.json({ error: 'User or family not found' }, { status: 404 })
+      return NextResponse.json({ error: 'User not part of a family' }, { status: 404 })
     }
 
     let whereClause: any = {
       familyId: user.family.id
     }
 
-    if (week) {
-      const weekStartDate = new Date(week)
+    if (weekStart) {
+      const weekStartDate = new Date(weekStart)
       const weekEndDate = new Date(weekStartDate)
       weekEndDate.setDate(weekStartDate.getDate() + 7)
       
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     const user = await getUserWithFamily(userId)
     if (!user?.family) {
-      return NextResponse.json({ error: 'User or family not found' }, { status: 404 })
+      return NextResponse.json({ error: 'User not part of a family' }, { status: 404 })
     }
 
     // Check if shopping list already exists for this week
@@ -151,6 +151,57 @@ export async function POST(request: NextRequest) {
     console.error('[SAVE_SHOPPING_LIST] Error:', error)
     return NextResponse.json(
       { error: 'Failed to save shopping list' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const user = await getUserWithFamily(userId)
+    if (!user?.family) {
+      return NextResponse.json({ error: 'User not part of a family' }, { status: 404 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const weekStart = searchParams.get('weekStart')
+
+    if (!weekStart) {
+      return NextResponse.json({ error: 'Week start date is required' }, { status: 400 })
+    }
+
+    const startDate = new Date(weekStart)
+    const endDate = new Date(startDate)
+    endDate.setDate(startDate.getDate() + 7)
+
+    // Delete all shopping lists for the specified week
+    await db.shoppingList.deleteMany({
+      where: {
+        familyId: user.family.id,
+        date: {
+          gte: startDate,
+          lt: endDate
+        }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Shopping list cleared successfully'
+    })
+
+  } catch (error) {
+    console.error('[DELETE_SHOPPING_LIST] Error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Failed to delete shopping list',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }
