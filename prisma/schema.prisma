@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PARENT
+  COOK
+  DRIVER
+  ADMIN
+  CHILD
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum ActivityStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  clerkId       String    @unique
+  email         String    @unique
+  firstName     String?
+  lastName      String?
+  role          UserRole  @default(PARENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  familyId      String?   @db.ObjectId
+  invitedBy     String?
+  joinedAt      DateTime?
+  
+  // Family Relations
+  family        Family?   @relation("FamilyMembers", fields: [familyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  ownedFamilies Family[]  @relation("FamilyOwner")
+  
+  // Other Relations
+  createdMealPlans    MealPlan[]         @relation("MealPlanCreator")
+  createdActivities   ChildActivity[]    @relation("ActivityCreator")
+  createdUserActivities Activity[]       @relation("UserActivities")
+  cookMealLogs        CookMealLog[]      @relation("CookLogs")
+  driverActivityLogs  DriverActivityLog[] @relation("DriverLogs")
+  
+  // ✅ REMOVED: familyMembers (redundant with direct family relation)
+  joinRequests      FamilyJoinRequest[]
+}
+
+model Family {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  inviteCode    String?  @unique
+  inviteExpiry  DateTime?
+  maxMembers    Int      @default(10)
+  
+  // Relations
+  members       User[]   @relation("FamilyMembers")
+  ownerId       String   @db.ObjectId @unique
+  owner         User     @relation("FamilyOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  // ✅ REMOVED: familyMembers (redundant - use members instead)
+  joinRequests    FamilyJoinRequest[]
+  mealPlans       MealPlan[]
+  childActivities ChildActivity[]
+  shoppingLists   ShoppingList[]
+  activities      Activity[]  // ✅ ADDED: Connect Activity to Family
+}
+
+// ✅ REMOVED: FamilyMember model (redundant - use direct User.family relation)
+
+model FamilyJoinRequest {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  familyId      String   @db.ObjectId
+  userClerkId   String
+  status        String   @default("PENDING") // Consider using enum: "PENDING" | "APPROVED" | "REJECTED"
+  requestedAt   DateTime @default(now())
+  respondedAt   DateTime?
+  respondedBy   String?
+  
+  family        Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userClerkId], references: [clerkId], onDelete: Cascade)
+  
+  @@unique([familyId, userClerkId])
+}
+
+model MealPlan {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  mealType    MealType
+  date        DateTime
+  ingredients String[]
+  instructions String?
+  calories    Int?
+  cuisine     String?
+  isAiGenerated Boolean @default(false)
+  
+  familyId String @db.ObjectId
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdByClerkId String
+  createdBy   User   @relation("MealPlanCreator", fields: [createdByClerkId], references: [clerkId], onDelete: NoAction, onUpdate: NoAction)
+  
+  shoppingListItems ShoppingListItem[]
+  cookMealLogs      CookMealLog[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // ✅ ADDED: Useful indexes
+  @@index([familyId, date])
+  @@index([createdByClerkId])
+}
+
+model ShoppingList {
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  title    String
+  date     DateTime
+  
+  familyId String @db.ObjectId
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  
+  items ShoppingListItem[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // ✅ ADDED: Useful index
+  @@index([familyId, date])
+}
+
+model ShoppingListItem {
+  id         String  @id @default(auto()) @map("_id") @db.ObjectId
+  name       String
+  quantity   String?
+  category   String?
+  isPurchased Boolean @default(false)
+  
+  shoppingListId String       @db.ObjectId
+  shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  mealPlanId     String?      @db.ObjectId
+  mealPlan       MealPlan?    @relation(fields: [mealPlanId], references: [id], onDelete: SetNull)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChildActivity {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  location    String?
+  instructor  String?
+  isRecurring Boolean        @default(false)
+  recurringPattern String?
+  status      ActivityStatus @default(PENDING)
+  assignedMembers String[] @default([])
+  
+  familyId String @db.ObjectId
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdByClerkId String
+  createdBy   User   @relation("ActivityCreator", fields: [createdByClerkId], references: [clerkId], onDelete: NoAction, onUpdate: NoAction)
+  
+  driverActivityLogs DriverActivityLog[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // ✅ ADDED: Useful indexes
+  @@index([familyId, startDate])
+  @@index([createdByClerkId])
+}
+
+model CookMealLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  notes     String?
+  isPrepared Boolean @default(false)
+  preparedAt DateTime?
+  
+  mealPlanId String   @db.ObjectId
+  mealPlan   MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  cookClerkId String
+  cook       User     @relation("CookLogs", fields: [cookClerkId], references: [clerkId], onDelete: NoAction, onUpdate: NoAction)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DriverActivityLog {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  isPickedUp     Boolean @default(false)
+  isDroppedOff   Boolean @default(false)
+  pickupTime     DateTime?
+  dropoffTime    DateTime?
+  notes          String?
+  
+  activityId String        @db.ObjectId
+  activity   ChildActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  driverClerkId String
+  driver     User          @relation("DriverLogs", fields: [driverClerkId], references: [clerkId], onDelete: NoAction, onUpdate: NoAction)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Activity {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  date        DateTime
+  location    String?
+  status      String   @default("pending")
+  
+  // ✅ ADDED: Family relation to scope activities by family
+  familyId String? @db.ObjectId
+  family   Family? @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  
+  createdByClerkId String
+  createdBy   User   @relation("UserActivities", fields: [createdByClerkId], references: [clerkId], onDelete: NoAction)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // ✅ ADDED: Useful indexes
+  @@index([familyId, date])
+  @@index([createdByClerkId])
+}
