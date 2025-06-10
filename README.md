@@ -1,6 +1,5 @@
 # homeNest
-
-![homeNest Logo](https://example.com/homenest-logo.png)
+ 
 
 ## The AI-powered family assistant for modern Indian homes
 
@@ -12,7 +11,8 @@
 
 homeNest transforms how Indian families manage their households by bringing AI intelligence to meal planning, schedule coordination, and household tasks. Our platform reduces the mental load of running a home so families can focus on what matters most: spending quality time together.
 
-![Dashboard Screenshot](https://example.com/dashboard-screenshot.png)
+![image](https://github.com/user-attachments/assets/a2e4d1ce-cd5f-4d23-ad65-93b91d7e073e)
+
 
 ## ✨ Key Features
 
@@ -31,7 +31,7 @@ homeNest transforms how Indian families manage their households by bringing AI i
 - **Authentication:** Clerk
 - **Deployment:** Vercel
 
-## 📱 Screenshots
+ 
 
 <table>
   <tr>
@@ -85,7 +85,7 @@ homeNest transforms how Indian families manage their households by bringing AI i
 
 ## 🌐 Deployment
 
-The application is deployed on Vercel at [https://homenest.vercel.app](https://homenest.vercel.app)
+The application is deployed on Vercel at https://home-nest-lhk5.vercel.app/dashboard
 
 To deploy your own instance:
 
@@ -125,18 +125,7 @@ To deploy your own instance:
 - BigBasket & Amazon Fresh integration for direct grocery ordering
 - Family health hub for medication and appointment tracking
 
-## 🤝 Contributing
-
-We welcome contributions to homeNest! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
-
-## 🙏 Acknowledgments
-
-- [Google Gemini API](https://ai.google.dev/) for powering our meal planning AI
-- [Clerk](https://clerk.dev/) for authentication solutions
+ 
 - [Vercel](https://vercel.com/) for hosting and deployment
 - [ShadCN UI](https://ui.shadcn.com/) for the component library
 - All our beta testers who provided invaluable feedback
