@@ -3,7 +3,7 @@
 
 ## The AI-powered family assistant for modern Indian homes
 
-**Live App: [https://homenest.vercel.app](https://homenest.vercel.app)**
+**Live App: [[https://homenest.vercel.app](https://home-nest-lhk5.vercel.app/dashboard)]([https://homenest.vercel.app](https://home-nest-lhk5.vercel.app/dashboard))**
 
 ---
 
